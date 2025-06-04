@@ -31,7 +31,13 @@ const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || "your-bucket-name";
 const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
+  const allowedTypes = [
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/gif"
+  ];
 
   if (allowedTypes.includes(file.mimetype)) {
     cb(null, true);
@@ -176,7 +182,7 @@ const generateSignedUrlsForBrochure = async (brochure, expiresIn = 3600) => {
   return signedUrls;
 };
 const uploadToS3 = async (file, brochureName) => {
-  const fileName = `${brochureName}/${file.originalname}`;
+  const fileName = `book/${brochureName}/${file.originalname}`;
 
   const uploadCommand = new PutObjectCommand({
     Bucket: S3_BUCKET_NAME,
