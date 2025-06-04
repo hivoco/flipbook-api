@@ -51,9 +51,13 @@ const upload = multer({
 });
 
 
+// const VOICE_IDS = {
+//   male: "8l89UrPQsmYVJoJRfnAt",
+//   female: "KaCAGkAghyX8sFEYByRC",
+// };
 const VOICE_IDS = {
-  male: "8l89UrPQsmYVJoJRfnAt",
-  female: "KaCAGkAghyX8sFEYByRC",
+  male: "UzYWd2rD2PPFPjXRG3Ul",
+  female: "CoQByuTrT9gbKYx6QFL6",
 };
 
 // ElevenLabs TTS function
@@ -65,11 +69,24 @@ async function generateTTS(text, voiceId) {
     "Content-Type": "application/json",
   };
 
+
+//   payload = {
+//     "text": text,
+//     "model_id": "eleven_monolingual_v1",  # or "eleven_multilingual_v2" 
+//     "voice_settings": {
+//         "stability": 0.2,            
+//         "similarity_boost": 0.5,     
+//         "style": 1.2,                
+//         "use_speaker_boost": True     
+//         }
+//     }
+
   const payload = {
     text: text,
-    model_id: "eleven_monolingual_v1",
+    model_id: "eleven_multilingual_v2",
     voice_settings: {
       stability: 0.5,
+      // use_speaker_boost: true,
       similarity_boost: 0.75,
     },
   };
