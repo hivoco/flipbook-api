@@ -108,9 +108,12 @@ async function generateTTS(text, voiceId) {
 }
 
 // Upload audio to S3
-async function uploadAudioToS3(audioBuffer, filePrefix = "audio") {
+async function uploadAudioToS3(audioBuffer, filePrefix = "audio",brochureName) {
   try {
-    const fileName = `${filePrefix}_${uuidv4().substring(0, 8)}.mp3`;
+    const fileName = `${brochureName}/${filePrefix}_${uuidv4().substring(
+      0,
+      8
+    )}.mp3`;
     const s3Key = `audio/${fileName}`;
 
     const command = new PutObjectCommand({
@@ -514,7 +517,7 @@ router.delete("/brochure/:id", async (req, res) => {
 
 router.post("/api/tts", async (req, res) => {
   try {
-    const { text, gender } = req.body;
+    const { text, gender,brochureName } = req.body;
 
     // Validation
     if (!text || !gender) {
@@ -539,7 +542,7 @@ router.post("/api/tts", async (req, res) => {
 
     // Upload to S3
     console.log("Uploading audio to S3...");
-    const audioUrl = await uploadAudioToS3(audioBuffer, `tts_${gender}`);
+    const audioUrl = await uploadAudioToS3(audioBuffer, `tts_${gender}`,brochureName);
 
     console.log(`Audio uploaded successfully: ${audioUrl}`);
 
