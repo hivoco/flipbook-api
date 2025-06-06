@@ -10,6 +10,10 @@ const brochureSchema = new mongoose.Schema({
     match: /^[a-z0-9-]+$/, // Only lowercase letters, numbers, and hyphens
     index: true,
   },
+  personName: {
+    type: String,
+    trim: true
+  },
   displayName: {
     type: String,
     required: true,

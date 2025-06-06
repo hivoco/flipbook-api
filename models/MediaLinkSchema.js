@@ -18,12 +18,7 @@ const mediaLinkSchema = new mongoose.Schema({
       required: true,
       trim: true,
       maxlength: 2000,
-      validate: {
-        validator: function(v) {
-          return /^https?:\/\/.+/.test(v);
-        },
-        message: 'Link must be a valid HTTP/HTTPS URL'
-      }
+
     },
     linkType: {
       type: String,

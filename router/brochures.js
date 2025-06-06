@@ -10,9 +10,9 @@ import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 const router = Router();
 import multer from "multer";
 import brochureModel from "../models/BrochuresSchema.js"; // Adjust path as needed
-import axios from "axios"
-import { v4 as uuidv4 } from "uuid"
-
+import axios from "axios";
+import { v4 as uuidv4 } from "uuid";
+import { getContactInfo } from "../helper/common.js";
 
 // Configure AWS S3 Client (v3)
 const s3Client = new S3Client({
@@ -23,10 +23,7 @@ const s3Client = new S3Client({
   },
 });
 
-
-
 const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || "your-bucket-name";
-
 
 const storage = multer.memoryStorage();
 
@@ -36,7 +33,7 @@ const fileFilter = (req, file, cb) => {
     "image/jpg",
     "image/png",
     "image/webp",
-    "image/gif"
+    "image/gif",
   ];
 
   if (allowedTypes.includes(file.mimetype)) {
@@ -46,16 +43,14 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
   limits: {
     fileSize: 10 * 1024 * 1024, // 10MB per file
-    files: 1000, 
+    files: 1000,
   },
 });
-
 
 // const VOICE_IDS = {
 //   male: "8l89UrPQsmYVJoJRfnAt",
@@ -75,17 +70,16 @@ async function generateTTS(text, voiceId) {
     "Content-Type": "application/json",
   };
 
-
-//   payload = {
-//     "text": text,
-//     "model_id": "eleven_monolingual_v1",  # or "eleven_multilingual_v2" 
-//     "voice_settings": {
-//         "stability": 0.2,            
-//         "similarity_boost": 0.5,     
-//         "style": 1.2,                
-//         "use_speaker_boost": True     
-//         }
-//     }
+  //   payload = {
+  //     "text": text,
+  //     "model_id": "eleven_monolingual_v1",  # or "eleven_multilingual_v2"
+  //     "voice_settings": {
+  //         "stability": 0.2,
+  //         "similarity_boost": 0.5,
+  //         "style": 1.2,
+  //         "use_speaker_boost": True
+  //         }
+  //     }
 
   const payload = {
     text: text,
@@ -114,7 +108,11 @@ async function generateTTS(text, voiceId) {
 }
 
 // Upload audio to S3
-async function uploadAudioToS3(audioBuffer, filePrefix = "audio",brochureName) {
+async function uploadAudioToS3(
+  audioBuffer,
+  filePrefix = "audio",
+  brochureName
+) {
   try {
     const fileName = `${brochureName}/${filePrefix}_${uuidv4().substring(
       0,
@@ -195,9 +193,7 @@ const uploadToS3 = async (file, brochureName) => {
   try {
     const result = await s3Client.send(uploadCommand);
     // Construct the public URL
-    const s3Url = `https://${S3_BUCKET_NAME}.s3.${
-      process.env.AWS_REGION
-    }.amazonaws.com/${fileName}`;
+    const s3Url = `https://${S3_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
     return s3Url;
   } catch (error) {
     console.error("S3 upload error:", error);
@@ -205,23 +201,17 @@ const uploadToS3 = async (file, brochureName) => {
   }
 };
 
-
-
 // Upload brochure API endpoint
 router.post(
   "/upload-brochure",
   upload.array("images", 1000),
   async (req, res) => {
     try {
-      // Debug logs to see what's being received
-     
-
-      const { displayName } = req.body;
+      const { displayName, personName } = req.body;
       const files = req.files;
 
       // Validation
       if (!displayName || !displayName.trim()) {
-      
         return res.status(400).json({
           success: false,
           msg: "Display name is required",
@@ -293,6 +283,7 @@ router.post(
       // Create new brochure with S3 URLs
       const newBrochure = new brochureModel({
         name: brochureName,
+        personName: personName.toLowerCase(),
         displayName: displayName.trim(),
         totalPages: files.length,
         images: imageUrls, // Store S3 URLs in images object
@@ -309,6 +300,7 @@ router.post(
         data: {
           id: savedBrochure._id,
           name: savedBrochure.name,
+          personName: savedBrochure.personName,
           displayName: savedBrochure.displayName,
           totalPages: savedBrochure.totalPages,
           images: savedBrochure.images,
@@ -347,18 +339,24 @@ router.get("/brochure/:name", async (req, res) => {
       });
     }
 
-    let responseData = { ...brochure.toObject() };
+    let responseData=null
+    if (brochure.personName) {
+      const contactInfo = getContactInfo(brochure.personName);
+      responseData = { contactInfo, ...brochure.toObject() };
+    } else {
+      responseData = { ...brochure.toObject() };
+    }
 
     // Sort images in ascending order by numeric value in filename
     if (brochure.images && brochure.images.length > 0) {
       const sortedImages = brochure.images.sort((a, b) => {
         // Extract number from filename (handles both "1.png" and "placeholder-4.png")
         const getNumber = (url) => {
-          const filename = url.split('/').pop(); // Get filename from URL
+          const filename = url.split("/").pop(); // Get filename from URL
           const match = filename.match(/(\d+)/); // Extract first number found
           return match ? parseInt(match[1]) : 0;
         };
-        
+
         return getNumber(a) - getNumber(b);
       });
 
@@ -523,7 +521,7 @@ router.delete("/brochure/:id", async (req, res) => {
 
 router.post("/api/tts", async (req, res) => {
   try {
-    const { text, gender,brochureName } = req.body;
+    const { text, gender, brochureName } = req.body;
 
     // Validation
     if (!text || !gender) {
@@ -548,7 +546,11 @@ router.post("/api/tts", async (req, res) => {
 
     // Upload to S3
     console.log("Uploading audio to S3...");
-    const audioUrl = await uploadAudioToS3(audioBuffer, `tts_${gender}`,brochureName);
+    const audioUrl = await uploadAudioToS3(
+      audioBuffer,
+      `tts_${gender}`,
+      brochureName
+    );
 
     console.log(`Audio uploaded successfully: ${audioUrl}`);
 
