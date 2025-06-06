@@ -427,8 +427,8 @@ router.get("/brochures", async (req, res) => {
     const brochures = await brochureModel
       .find(filter)
       .sort(sort)
-      .skip(skip)
-      .limit(parseInt(limit));
+      // .skip(skip)
+      // .limit(parseInt(limit));
 
     // Generate signed URLs if requested
     let processedBrochures = brochures;
