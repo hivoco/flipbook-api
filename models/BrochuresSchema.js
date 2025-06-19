@@ -12,7 +12,7 @@ const brochureSchema = new mongoose.Schema({
   },
   personName: {
     type: String,
-    trim: true
+    trim: true,
   },
   displayName: {
     type: String,
@@ -29,6 +29,11 @@ const brochureSchema = new mongoose.Schema({
   images: {
     type: [String], // Array of strings, not objects
     default: [],
+  },
+
+  isLandScape: {
+    type: Boolean,
+    default: false,
   },
 
   createdAt: {

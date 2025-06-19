@@ -18,8 +18,8 @@ export function getContactInfo(name) {
       email: "ann@hivoco.com",
     },
     dipanshi: {
-      number: "8252261004",
-      email: "kritika@hivoco.com",
+      number: "7982592365",
+      email: "dipanshi@hivoco.com",
     },
     kritika: {
       number: "8252261004",

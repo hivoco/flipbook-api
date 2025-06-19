@@ -43,6 +43,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
+
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
@@ -51,6 +52,9 @@ const upload = multer({
     files: 1000,
   },
 });
+
+
+
 
 // const VOICE_IDS = {
 //   male: "8l89UrPQsmYVJoJRfnAt",
@@ -69,17 +73,6 @@ async function generateTTS(text, voiceId) {
     "xi-api-key": process.env.ELEVEN_API_KEY,
     "Content-Type": "application/json",
   };
-
-  //   payload = {
-  //     "text": text,
-  //     "model_id": "eleven_monolingual_v1",  # or "eleven_multilingual_v2"
-  //     "voice_settings": {
-  //         "stability": 0.2,
-  //         "similarity_boost": 0.5,
-  //         "style": 1.2,
-  //         "use_speaker_boost": True
-  //         }
-  //     }
 
   const payload = {
     text: text,
@@ -232,8 +225,6 @@ router.post(
       }
 
       let brochureName = generateBrochureName(displayName);
-
-      // Check if brochure name already exists and make it unique
       let counter = 1;
       let originalName = brochureName;
 
@@ -242,7 +233,6 @@ router.post(
         counter++;
       }
 
-      // Upload all images to S3
       const imageUrls = [];
       const uploadPromises = files.map(async (file) => {
         try {
@@ -467,6 +457,75 @@ router.get("/brochures", async (req, res) => {
   }
 });
 
+
+router.patch("/brochure/:name/toggle-landscape", async (req, res) => {
+  try {
+    const { name } = req.params;
+
+    // Find existing brochure
+    const existingBrochure = await brochureModel.findOne({name});
+    if (!existingBrochure) {
+      return res.status(404).json({
+        success: false,
+        msg: "Brochure not found",
+      });
+    }
+
+    // Toggle the isLandScape field
+    const currentValue = existingBrochure.isLandScape || false; // Default to false if undefined
+    const newValue = !currentValue;
+
+    // Update brochure in database
+    const updatedBrochure = await brochureModel.findOneAndUpdate(
+      {name},
+      {
+        isLandScape: newValue,
+        updatedAt: new Date(),
+      },
+      { new: true, runValidators: true }
+    );
+
+    // Prepare response data
+    let responseData = updatedBrochure.toObject();
+
+    // Sort images in the response
+    if (responseData.images && responseData.images.length > 0) {
+      const sortedImages = responseData.images.sort((a, b) => {
+        const getNumber = (url) => {
+          const filename = url.split("/").pop();
+          const match = filename.match(/(\d+)/);
+          return match ? parseInt(match[1]) : 0;
+        };
+        return getNumber(a) - getNumber(b);
+      });
+      responseData.images = sortedImages;
+    }
+
+    // Add contact info if person name exists
+    if (responseData.personName) {
+      const contactInfo = getContactInfo(responseData.personName);
+      responseData = { contactInfo, ...responseData };
+    }
+
+    return res.status(200).json({
+      success: true,
+      msg: `Landscape mode ${newValue ? "enabled" : "disabled"} successfully`,
+      data: responseData,
+      toggle: {
+        previousValue: currentValue,
+        newValue: newValue,
+      },
+    });
+  } catch (error) {
+    console.error("Toggle landscape error:", error);
+    return res.status(500).json({
+      success: false,
+      msg: "Internal server error",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
+    });
+  }
+});
+
 // Optional: Endpoint to delete brochure and cleanup S3 files
 router.delete("/brochure/:id", async (req, res) => {
   try {
@@ -518,6 +577,9 @@ router.delete("/brochure/:id", async (req, res) => {
     });
   }
 });
+
+
+
 
 router.post("/api/tts", async (req, res) => {
   try {
