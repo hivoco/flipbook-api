@@ -9,35 +9,35 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express()
 
-app.use((req, res, next) => {
-  const allowedOrigins = [
-    "http://localhost:8829",
-    "http://localhost:8830",
-    "http://192.168.1.11:8829"
-  ];
-  const origin = req.headers.origin;
+// app.use((req, res, next) => {
+//   const allowedOrigins = [
+//     "http://localhost:8829",
+//     "http://localhost:8830",
+//     "http://192.168.1.11:8829"
+//   ];
+//   const origin = req.headers.origin;
 
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader("Access-Control-Allow-Origin", origin);
-    res.setHeader("Vary", "Origin"); // Add this line
-    res.setHeader(
-      "Access-Control-Allow-Methods",
-      "GET, POST, PUT, DELETE, OPTIONS,PATCH"
-    );
-    res.setHeader(
-      "Access-Control-Allow-Headers",
-      "Content-Type, Authorization"
-    );
-    res.setHeader("Access-Control-Allow-Credentials", true);
-  }
+//   if (allowedOrigins.includes(origin)) {
+//     res.setHeader("Access-Control-Allow-Origin", origin);
+//     res.setHeader("Vary", "Origin"); // Add this line
+//     res.setHeader(
+//       "Access-Control-Allow-Methods",
+//       "GET, POST, PUT, DELETE, OPTIONS,PATCH"
+//     );
+//     res.setHeader(
+//       "Access-Control-Allow-Headers",
+//       "Content-Type, Authorization"
+//     );
+//     res.setHeader("Access-Control-Allow-Credentials", true);
+//   }
 
-  // Handle preflight requests (for non-simple requests like PUT, DELETE, etc.)
-  if (req.method === "OPTIONS") {
-    return res.status(200).end();
-  }
+//   // Handle preflight requests (for non-simple requests like PUT, DELETE, etc.)
+//   if (req.method === "OPTIONS") {
+//     return res.status(200).end();
+//   }
 
-  next();
-});
+//   next();
+// });
 
 const PORT = process.env.PORT || 5000;
 app.use(express.json());
