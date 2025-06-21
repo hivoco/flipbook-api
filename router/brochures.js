@@ -43,7 +43,6 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-
 const upload = multer({
   storage: storage,
   fileFilter: fileFilter,
@@ -52,9 +51,6 @@ const upload = multer({
     files: 1000,
   },
 });
-
-
-
 
 // const VOICE_IDS = {
 //   male: "8l89UrPQsmYVJoJRfnAt",
@@ -329,7 +325,7 @@ router.get("/brochure/:name", async (req, res) => {
       });
     }
 
-    let responseData=null
+    let responseData = null;
     if (brochure.personName) {
       const contactInfo = getContactInfo(brochure.personName);
       responseData = { contactInfo, ...brochure.toObject() };
@@ -417,8 +413,8 @@ router.get("/brochures", async (req, res) => {
     const brochures = await brochureModel
       .find(filter)
       .sort(sort)
-      // .skip(skip)
-      // .limit(parseInt(limit));
+      .skip(skip)
+      .limit(parseInt(limit));
 
     // Generate signed URLs if requested
     let processedBrochures = brochures;
@@ -457,13 +453,12 @@ router.get("/brochures", async (req, res) => {
   }
 });
 
-
 router.patch("/brochure/:name/toggle-landscape", async (req, res) => {
   try {
     const { name } = req.params;
 
     // Find existing brochure
-    const existingBrochure = await brochureModel.findOne({name});
+    const existingBrochure = await brochureModel.findOne({ name });
     if (!existingBrochure) {
       return res.status(404).json({
         success: false,
@@ -477,7 +472,7 @@ router.patch("/brochure/:name/toggle-landscape", async (req, res) => {
 
     // Update brochure in database
     const updatedBrochure = await brochureModel.findOneAndUpdate(
-      {name},
+      { name },
       {
         isLandScape: newValue,
         updatedAt: new Date(),
@@ -577,9 +572,6 @@ router.delete("/brochure/:id", async (req, res) => {
     });
   }
 });
-
-
-
 
 router.post("/api/tts", async (req, res) => {
   try {

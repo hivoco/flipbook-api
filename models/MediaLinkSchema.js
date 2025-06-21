@@ -59,7 +59,7 @@ const mediaLinkSchema = new mongoose.Schema({
 
   isImage: {
     type: Boolean,
-    default: true,
+    default: false,
   },
   images: {
     type: [String],

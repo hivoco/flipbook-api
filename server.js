@@ -8,10 +8,12 @@ import { fileURLToPath } from "url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const app = express()
+
 app.use((req, res, next) => {
   const allowedOrigins = [
     "http://localhost:8829",
     "http://localhost:8830",
+    "http://192.168.1.11:8829"
   ];
   const origin = req.headers.origin;
 

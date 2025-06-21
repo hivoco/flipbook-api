@@ -322,7 +322,7 @@ router.post(
       const newMediaLink = new mediaLinkModel({
         brochureName: brochure.name, // Use the actual brochure name from DB
         pageNumber: pageNum, // Use the parsed integer
-        isImage: true,
+        isImage: imageUrls.length>0,
         images: imageUrls,
         linkType: "image",
         coordinates: parsedCoordinates,
