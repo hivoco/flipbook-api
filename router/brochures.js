@@ -13,6 +13,7 @@ import brochureModel from "../models/BrochuresSchema.js"; // Adjust path as need
 import axios from "axios";
 import { v4 as uuidv4 } from "uuid";
 import { getContactInfo } from "../helper/common.js";
+import mediaLinkModel from "../models/MediaLinkSchema.js";
 
 // Configure AWS S3 Client (v3)
 const s3Client = new S3Client({
@@ -522,11 +523,13 @@ router.patch("/brochure/:name/toggle-landscape", async (req, res) => {
 });
 
 // Optional: Endpoint to delete brochure and cleanup S3 files
-router.delete("/brochure/:id", async (req, res) => {
+router.delete("/brochure/:name", async (req, res) => {
   try {
-    const { id } = req.params;
+    const { name } = req.params;
+    const { forceDelete = false } = req.query; // Optional parameter for force deletion
 
-    const brochure = await brochureModel.findById(id);
+    // Find the brochure by name (not ID)
+    const brochure = await brochureModel.findOne({ name: name.toLowerCase() });
     if (!brochure) {
       return res.status(404).json({
         success: false,
@@ -534,45 +537,224 @@ router.delete("/brochure/:id", async (req, res) => {
       });
     }
 
-    // Delete images from S3
+    // console.log(Starting deletion process for brochure: ${brochure.name});
+
+    // Step 1: Find all associated media links
+    const mediaLinks = await mediaLinkModel.find({
+      brochureName: brochure.name,
+    });
+
+    // console.log(Found ${mediaLinks.length} media links to delete);
+
+    // Step 2: Delete images from media links from S3
+    const mediaLinkImageDeletions = [];
+    for (const mediaLink of mediaLinks) {
+      if (
+        mediaLink.isImage &&
+        mediaLink.images &&
+        mediaLink.images.length > 0
+      ) {
+        for (const imageUrl of mediaLink.images) {
+          try {
+            // Extract S3 key from URL
+            const urlParts = imageUrl.split("/");
+            const key = urlParts.slice(3).join("/"); // Remove https://bucket.s3.region.amazonaws.com/
+
+            const deleteCommand = new DeleteObjectCommand({
+              Bucket: S3_BUCKET_NAME,
+              Key: key,
+            });
+
+            mediaLinkImageDeletions.push(s3Client.send(deleteCommand));
+            // console.log(Queued media link image for deletion: ${key});
+          } catch (error) {
+            // console.error(
+            //   Error queuing media link image for deletion: ${imageUrl},
+            //   error
+            // );
+            if (!forceDelete) {
+              return res.status(500).json({
+                success: false,
+                msg: `Failed to delete media link image: ${imageUrl}`,
+                error: error.message,
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Step 3: Delete brochure images from S3
+    const brochureImageDeletions = [];
     if (brochure.images && brochure.images.length > 0) {
-      const deletePromises = brochure.images.map(async (imageUrl) => {
+      for (const imageUrl of brochure.images) {
         try {
           // Extract the filename from the URL
           const urlParts = imageUrl.split("/");
           const filename = urlParts[urlParts.length - 1];
-          const key = `${brochure.name}/images/${filename}`;
+          const key = `book/${brochure.name}/${filename}`;
 
           const deleteCommand = new DeleteObjectCommand({
             Bucket: S3_BUCKET_NAME,
             Key: key,
           });
 
-          await s3Client.send(deleteCommand);
+          brochureImageDeletions.push(s3Client.send(deleteCommand));
+          // console.log(Queued brochure image for deletion: ${key});
         } catch (error) {
-          console.error("Failed to delete S3 object:", error);
+          console.error(`
+            Error queuing brochure image for deletion: ${imageUrl},
+            error`
+          );
+          if (!forceDelete) {
+            return res.status(500).json({
+              success: false,
+              msg: `Failed to delete brochure image: ${imageUrl}`,
+              error: error.message,
+            });
+          }
         }
-      });
-
-      await Promise.allSettled(deletePromises);
+      }
     }
 
-    // Delete from database
-    await brochureModel.findByIdAndDelete(id);
+    // Step 4: Delete audio files from S3 (all files in the audio/brochureName/ folder)
+    const audioFolderKey = `audio/${brochure.name}/`;
+    let audioFileDeletions = [];
 
+    try {
+      // List all objects in the audio folder
+      const { ListObjectsV2Command } = await import("@aws-sdk/client-s3");
+      const listCommand = new ListObjectsV2Command({
+        Bucket: S3_BUCKET_NAME,
+        Prefix: audioFolderKey,
+      });
+
+      const listResponse = await s3Client.send(listCommand);
+
+      if (listResponse.Contents && listResponse.Contents.length > 0) {
+        audioFileDeletions = listResponse.Contents.map((object) => {
+          const deleteCommand = new DeleteObjectCommand({
+            Bucket: S3_BUCKET_NAME,
+            Key: object.Key,
+          });
+          console.log(`Queued audio file for deletion: ${object.Key}`);
+          return s3Client.send(deleteCommand);
+        });
+      }
+    } catch (error) {
+      console.error("Error listing/deleting audio files:", error);
+      if (!forceDelete) {
+        return res.status(500).json({
+          success: false,
+          msg: "Failed to delete audio files",
+          error: error.message,
+        });
+      }
+    }
+
+    // Step 5: Execute all S3 deletions in parallel
+    const allS3Deletions = [
+      ...mediaLinkImageDeletions,
+      ...brochureImageDeletions,
+      ...audioFileDeletions,
+    ];
+
+    if (allS3Deletions.length > 0) {
+      try {
+        console.log(
+          `Executing ${allS3Deletions.length} S3 deletion operations...`
+        );
+        const deletionResults = await Promise.allSettled(allS3Deletions);
+
+        const failedDeletions = deletionResults.filter(
+          (result) => result.status === "rejected"
+        );
+
+        if (failedDeletions.length > 0 && !forceDelete) {
+          console.error("Some S3 deletions failed:", failedDeletions);
+          return res.status(500).json({
+            success: false,
+            msg: "Some S3 files failed to delete",
+            failedCount: failedDeletions.length,
+            totalCount: allS3Deletions.length,
+          });
+        }
+
+        console.log(
+          `S3 deletions completed. Failed: ${
+            failedDeletions.length
+          }, Success: ${deletionResults.length - failedDeletions.length}`
+        );
+      } catch (error) {
+        console.error("Error during S3 deletion batch:", error);
+        if (!forceDelete) {
+          return res.status(500).json({
+            success: false,
+            msg: "Failed to delete files from S3",
+            error: error.message,
+          });
+        }
+      }
+    }
+
+    // Step 6: Delete media links from database
+    let deletedMediaLinksCount = 0;
+    if (mediaLinks.length > 0) {
+      try {
+        const mediaLinkDeletionResult = await mediaLinkModel.deleteMany({
+          brochureName: brochure.name,
+        });
+        deletedMediaLinksCount = mediaLinkDeletionResult.deletedCount;
+        // console.log(
+        //   Deleted ${deletedMediaLinksCount} media links from database
+        // );
+      } catch (error) {
+        console.error("Error deleting media links:", error);
+        if (!forceDelete) {
+          return res.status(500).json({
+            success: false,
+            msg: "Failed to delete media links from database",
+            error: error.message,
+          });
+        }
+      }
+    }
+
+    // Step 7: Delete brochure from database
+    try {
+      await brochureModel.findByIdAndDelete(brochure._id);
+      // console.log(Deleted brochure ${brochure.name} from database);
+    } catch (error) {
+      console.error("Error deleting brochure:", error);
+      return res.status(500).json({
+        success: false,
+        msg: "Failed to delete brochure from database",
+        error: error.message,
+      });
+    }
+
+    // Step 8: Return success response with summary
     return res.status(200).json({
       success: true,
-      msg: "Brochure deleted successfully",
+      msg: "Brochure and all associated data deleted successfully",
+      summary: {
+        brochureName: brochure.name,
+        brochureDisplayName: brochure.displayName,
+        deletedMediaLinks: deletedMediaLinksCount,
+        deletedBrochureImages: brochure.images?.length || 0,
+        deletedS3Objects: allS3Deletions.length,
+        deletedAt: new Date().toISOString(),
+      },
     });
   } catch (error) {
-    console.error("Delete brochure error:", error);
+    console.error("Brochure deletion error:", error);
     return res.status(500).json({
       success: false,
-      msg: "Internal server error",
+      msg: "Internal server error during brochure deletion",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
-
 router.post("/api/tts", async (req, res) => {
   try {
     const { text, gender, brochureName } = req.body;
