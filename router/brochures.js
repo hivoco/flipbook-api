@@ -454,9 +454,12 @@ router.get("/brochures", async (req, res) => {
   }
 });
 
-router.patch("/brochure/:name/toggle-landscape", async (req, res) => {
+router.patch("/brochure/:name", async (req, res) => {
   try {
     const { name } = req.params;
+    const data  = req.body;
+
+    console.log("data",data)
 
     // Find existing brochure
     const existingBrochure = await brochureModel.findOne({ name });
@@ -466,20 +469,23 @@ router.patch("/brochure/:name/toggle-landscape", async (req, res) => {
         msg: "Brochure not found",
       });
     }
-
+    console.log("start")
     // Toggle the isLandScape field
-    const currentValue = existingBrochure.isLandScape || false; // Default to false if undefined
-    const newValue = !currentValue;
+    // const currentValue = existingBrochure.isLandScape || false;
+    // const currentSoundValue = existingBrochure.pageFlipSound || false;
+    // const newValue = !currentValue;
+    // const newSoundValue = !currentSoundValue;
 
     // Update brochure in database
     const updatedBrochure = await brochureModel.findOneAndUpdate(
       { name },
       {
-        isLandScape: newValue,
+        ...data,
         updatedAt: new Date(),
       },
       { new: true, runValidators: true }
     );
+    console.log("updatedBrochure",updatedBrochure)
 
     // Prepare response data
     let responseData = updatedBrochure.toObject();
@@ -505,12 +511,8 @@ router.patch("/brochure/:name/toggle-landscape", async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      msg: `Landscape mode ${newValue ? "enabled" : "disabled"} successfully`,
+      msg: `updated successfully`,
       data: responseData,
-      toggle: {
-        previousValue: currentValue,
-        newValue: newValue,
-      },
     });
   } catch (error) {
     console.error("Toggle landscape error:", error);
@@ -604,8 +606,7 @@ router.delete("/brochure/:name", async (req, res) => {
         } catch (error) {
           console.error(`
             Error queuing brochure image for deletion: ${imageUrl},
-            error`
-          );
+            error`);
           if (!forceDelete) {
             return res.status(500).json({
               success: false,
