@@ -28,30 +28,30 @@ const S3_BUCKET_NAME = process.env.S3_BUCKET_NAME || "your-bucket-name";
 
 const storage = multer.memoryStorage();
 
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = [
-    "image/jpeg",
-    "image/jpg",
-    "image/png",
-    "image/webp",
-    "image/gif",
-  ];
+// const fileFilter = (req, file, cb) => {
+//   const allowedTypes = [
+//     "image/jpeg",
+//     "image/jpg",
+//     "image/png",
+//     "image/webp",
+//     "image/gif",
+//   ];
 
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error("Only image files (JPEG, PNG, WebP) are allowed"), false);
-  }
-};
+//   if (allowedTypes.includes(file.mimetype)) {
+//     cb(null, true);
+//   } else {
+//     cb(new Error("Only image files (JPEG, PNG, WebP) are allowed"), false);
+//   }
+// };
 
-const upload = multer({
-  storage: storage,
-  fileFilter: fileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB per file
-    files: 1000,
-  },
-});
+// const upload = multer({
+//   storage: storage,
+//   fileFilter: fileFilter,
+//   limits: {
+//     fileSize: 10 * 1024 * 1024, // 10MB per file
+//     files: 1000,
+//   },
+// });
 
 // const VOICE_IDS = {
 //   male: "8l89UrPQsmYVJoJRfnAt",
@@ -192,6 +192,167 @@ const uploadToS3 = async (file, brochureName) => {
 };
 
 // Upload brochure API endpoint
+const fileFilter = (req, file, cb) => {
+  const allowedTypes = [
+    // Image types
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+    "image/bmp",
+    "image/svg+xml",
+
+    // Video types
+    "video/mp4",
+    "video/avi",
+    "video/mov",
+    "video/wmv",
+    "video/flv",
+    "video/webm",
+    "video/mkv",
+    "video/3gp",
+    "video/quicktime",
+
+    // Audio types
+    "audio/mpeg",
+    "audio/mp3",
+    "audio/wav",
+    "audio/ogg",
+    "audio/aac",
+    "audio/flac",
+    "audio/m4a",
+    "audio/wma",
+    "audio/webm",
+  ];
+
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(
+      new Error(
+        `File type ${file.mimetype} is not allowed. Only video, image, and audio files are supported.`
+      ),
+      false
+    );
+  }
+};
+
+// Configure multer with file size limits
+const upload = multer({
+  storage: storage,
+  fileFilter: fileFilter,
+  limits: {
+    fileSize: 500 * 1024 * 1024, // 500MB per file
+    files: 50, // Maximum 50 files at once
+  },
+});
+
+// Helper function to determine file category based on mimetype
+const getFileCategory = (mimetype) => {
+  if (mimetype.startsWith("image/")) return "images";
+  if (mimetype.startsWith("video/")) return "videos";
+  if (mimetype.startsWith("audio/")) return "audio";
+  return "files"; // fallback
+};
+
+// Helper function to get file extension from mimetype
+const getFileExtension = (mimetype, originalname) => {
+  // Try to get extension from original filename first
+  const extensionFromName = originalname.split(".").pop();
+  if (extensionFromName && extensionFromName.length <= 4) {
+    return extensionFromName.toLowerCase();
+  }
+
+  // Fallback to mimetype mapping
+  const mimetypeMap = {
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/bmp": "bmp",
+    "image/svg+xml": "svg",
+    "video/mp4": "mp4",
+    "video/avi": "avi",
+    "video/mov": "mov",
+    "video/wmv": "wmv",
+    "video/flv": "flv",
+    "video/webm": "webm",
+    "video/mkv": "mkv",
+    "video/3gp": "3gp",
+    "video/quicktime": "mov",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/wav": "wav",
+    "audio/ogg": "ogg",
+    "audio/aac": "aac",
+    "audio/flac": "flac",
+    "audio/m4a": "m4a",
+    "audio/wma": "wma",
+    "audio/webm": "webm",
+  };
+
+  return mimetypeMap[mimetype] || "bin";
+};
+
+// Upload function to S3
+const uploadFileToS3 = async (file, brochureName) => {
+  try {
+    const fileCategory = getFileCategory(file.mimetype);
+    const fileExtension = getFileExtension(file.mimetype, file.originalname);
+    const uniqueId = uuidv4().substring(0, 8);
+
+    // Clean the original filename
+    const cleanFileName = file.originalname
+      .replace(/[^a-zA-Z0-9.-]/g, "_") // Replace special chars with underscore
+      // .replace(/{2,}/g, "") // Replace multiple underscores with single
+      .replace(/^|$/g, ""); // Remove leading/trailing underscores
+
+    // Create unique filename
+    const fileName = `${
+      cleanFileName.split(".")[0]
+    }_${uniqueId}.${fileExtension}`;
+    const s3Key = `${brochureName}/${fileCategory}/${fileName}`;
+
+    const uploadCommand = new PutObjectCommand({
+      Bucket: S3_BUCKET_NAME,
+      Key: s3Key,
+      Body: file.buffer,
+      ContentType: file.mimetype,
+      Metadata: {
+        "original-name": file.originalname,
+        "brochure-name": brochureName,
+        "file-category": fileCategory,
+        "upload-timestamp": new Date().toISOString(),
+      },
+    });
+
+    await s3Client.send(uploadCommand);
+
+    // Construct the public URL
+    const s3Url = `https://${S3_BUCKET_NAME}.s3.${
+      process.env.AWS_REGION || "us-east-1"
+    }.amazonaws.com/${s3Key}`;
+
+    return {
+      success: true,
+      url: s3Url,
+      key: s3Key,
+      category: fileCategory,
+      originalName: file.originalname,
+      fileName: fileName,
+      size: file.size,
+      mimetype: file.mimetype,
+    };
+  } catch (error) {
+    console.error("S3 upload error:", error);
+    throw new Error(
+      `Failed to upload ${file.originalname} to S3: ${error.message}`
+    );
+  }
+};
+
 router.post(
   "/upload-brochure",
   upload.array("images", 1000),
@@ -457,9 +618,9 @@ router.get("/brochures", async (req, res) => {
 router.patch("/brochure/:name", async (req, res) => {
   try {
     const { name } = req.params;
-    const data  = req.body;
+    const data = req.body;
 
-    console.log("data",data)
+    console.log("data", data);
 
     // Find existing brochure
     const existingBrochure = await brochureModel.findOne({ name });
@@ -469,7 +630,7 @@ router.patch("/brochure/:name", async (req, res) => {
         msg: "Brochure not found",
       });
     }
-    console.log("start")
+    console.log("start");
     // Toggle the isLandScape field
     // const currentValue = existingBrochure.isLandScape || false;
     // const currentSoundValue = existingBrochure.pageFlipSound || false;
@@ -485,7 +646,7 @@ router.patch("/brochure/:name", async (req, res) => {
       },
       { new: true, runValidators: true }
     );
-    console.log("updatedBrochure",updatedBrochure)
+    console.log("updatedBrochure", updatedBrochure);
 
     // Prepare response data
     let responseData = updatedBrochure.toObject();
@@ -756,6 +917,7 @@ router.delete("/brochure/:name", async (req, res) => {
     });
   }
 });
+
 router.post("/api/tts", async (req, res) => {
   try {
     const { text, gender, brochureName } = req.body;
@@ -801,6 +963,69 @@ router.post("/api/tts", async (req, res) => {
     res.status(500).json({
       success: false,
       error: error.message,
+    });
+  }
+});
+
+router.post("/upload-file", upload.single("file"), async (req, res) => {
+  try {
+    const { brochureName } = req.body;
+    const file = req.file;
+
+    // Validation
+    if (!brochureName || !brochureName.trim()) {
+      return res.status(400).json({
+        success: false,
+        msg: "Brochure name is required",
+      });
+    }
+
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        msg: "File is required",
+      });
+    }
+
+    // Clean brochure name
+    const cleanBrochureName = brochureName
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9\s-]/g, "")
+      .replace(/\s+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+
+    console.log(
+      `Uploading file ${file.originalname} for brochure: ${cleanBrochureName}`
+    );
+
+    // Upload file
+    const uploadResult = await uploadFileToS3(file, cleanBrochureName);
+
+    return res.status(201).json({
+      success: true,
+      msg: "File uploaded successfully",
+      data: {
+        brochureName: cleanBrochureName,
+        file: {
+          url: uploadResult.url,
+          category: uploadResult.category,
+          originalName: uploadResult.originalName,
+          fileName: uploadResult.fileName,
+          size: uploadResult.size,
+          mimetype: uploadResult.mimetype,
+          key: uploadResult.key,
+        },
+        uploadedAt: new Date().toISOString(),
+      },
+    });
+  } catch (error) {
+    console.error("Single file upload error:", error);
+    return res.status(500).json({
+      success: false,
+      msg: "Internal server error during file upload",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 });
